@@ -1,0 +1,96 @@
+<% CASE '/free_bonus' %>
+{{ TEXT = BLOCK }}
+🎁 Для наших клиентов доступны эксклюзивные акции!
+
+Теперь каждый день у Вас есть шанс испытать удачу в слотах Telegram и добавить бонусные рубли на свой баланс!
+
+<b>Готовы испытать судьбу?</b> Нажмите кнопку ниже 👇
+{{ END }}
+{{ buttons = [] }}
+{{ buttons.push([
+    {
+        text = '🎰 Испытай Удачу!'
+        callback_data = '/dice'
+    }
+]) }}
+{{ tg_api(sendMessage = {
+    text = TEXT
+    parse_mode = "HTML"
+    reply_markup = {
+        inline_keyboard = buttons
+    }
+}) }}
+
+<% CASE [ '/dice' ]%>
+{{ vpn_mz_active = user.us.filter( category = 'vpn-mz', status = 'ACTIVE' ).items }}
+{{ USE date }}
+{{ SET spin_time = storage.read('name','result_' _ user.id ).0.result.date }}
+{{ SET time_now = date.now }}
+{{ SET true_time = spin_time + 86400 }}
+{{ SET wait_seconds = true_time - time_now }}
+
+{{ PERL }}
+  my $seconds = $stash->get('wait_seconds');
+  my $hours = int($seconds / 3600);
+  my $minutes = int(($seconds % 3600) / 60);
+  $stash->set('wait_hours', $hours);
+  $stash->set('wait_minutes', $minutes);
+{{ END }}
+
+{{ IF vpn_mz_active.size > 0 }}
+{{ tg_api( "answerCallbackQuery" = {
+         "show_alert" = "true"
+         "callback_query_id" = callback_query.id        
+         "text" = "⚡️ Успейте приобрести подписку и получите шанс принять участие в ИНТЕРАКТИВЕ!"
+    }
+	) }}
+    {{ STOP }}
+{{ END }}
+
+
+{{ IF true_time < time_now }}
+
+{{ tg_api( deleteMessage = { message_id = message.message_id } ) }}
+{{ storage.save('result_' _ user.id,telegram.bot('telegram_bot','/diceup',[user.id])) }}
+{{ telegram.bot('telegram_bot','/dice_result',[user.id]) }}
+
+{{ ELSE }}
+
+{{ tg_api( deleteMessage = { message_id = message.message_id } ) }}
+{{ TEXT = BLOCK }}
+⛔️ <b>Вы уже использовали попытку на сегодня.</b>
+
+⏳ Возвращайтесь через: <code>{{ wait_hours }} ч {{ wait_minutes }} мин</code> 😉
+{{ END #TEXT }}
+
+{{ tg_api( 
+    sendMessage = {
+        text = TEXT
+    }
+)}}
+{{ END }}
+
+<% CASE [ '/diceup' ] %>
+{{ tg_api( 
+    sendDice = {
+        emoji = 🎰
+    }
+)}}
+
+<% CASE '/dice_result' %>
+{{ dice = storage.read('name','result_' _ user.id ).0.result.dice.value }}
+
+{{ IF dice == 64 }}
+  {{ id = user.set_bonus('bonus', 15, 'comment', {'msg' => '🎰 Джекпот!'}) }}
+  {{ #TEXT = "🎉 Джекпот! Выпало " _ dice _ "\n💰 +15 бонусных рублей!" }}
+  {{ TEXT = "🎉 Джекпот!" }}
+
+{{ ELSE }}
+  {{ TEXT = "Увы! Повезёт в следующий раз. 😉" }}
+
+{{ END }}
+
+{{ tg_api(sendMessage = {
+    text = TEXT
+    parse_mode = "HTML"
+}) }}
